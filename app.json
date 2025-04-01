@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "New Hope",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.2.2",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/kmlogo.jpeg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -15,12 +15,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.peoplefirst.newhope",
-       "jsEngine": "jsc",
+      "jsEngine": "jsc",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "buildType": "app-bundle", 
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -37,6 +38,12 @@
       "eas": {
         "projectId": "cb87be78-7133-4be3-ba52-3c1bb9503a6c"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/cb87be78-7133-4be3-ba52-3c1bb9503a6c"
     }
   }
 }

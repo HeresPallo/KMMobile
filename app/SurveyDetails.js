@@ -1,9 +1,10 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { 
-  View, Text, TextInput, TouchableOpacity, Alert, ScrollView, StyleSheet 
+  View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, TouchableWithoutFeedback, Keyboard 
 } from "react-native";
-import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
+import axios from "axios";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view"; // Import for scroll view handling
 
 // Update this URL to your production endpoint
 const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com";
@@ -47,62 +48,65 @@ export default function SurveyDetailsScreen({ route }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <TouchableOpacity 
-        onPress={() => navigation.goBack()} 
-        style={styles.backButton}
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+      {/* Wrap everything in a single parent */}
+      <KeyboardAwareScrollView 
+        contentContainerStyle={styles.container} 
+        keyboardShouldPersistTaps="handled" // Allow taps to dismiss the keyboard
+        extraScrollHeight={20} // Allow space for the keyboard
       >
-        <Text style={styles.backButtonText}>← Back</Text>
-      </TouchableOpacity>
+        <View style={styles.innerContainer}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
 
-      <Text style={styles.title}>{survey.title}</Text>
-      <Text style={styles.description}>
-        {survey.description || "No description available"}
-      </Text>
+          <Text style={styles.title}>{survey.title}</Text>
+          <Text style={styles.description}>
+            {survey.description || "No description available"}
+          </Text>
 
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Your Name</Text>
-        <TextInput 
-          style={styles.input}
-          placeholder="Enter your name"
-          value={name}
-          autoCorrect={false}
-          onChangeText={setName}
-        />
-      </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Your Name</Text>
+            <TextInput 
+              style={styles.input}
+              placeholder="Enter your name"
+              value={name}
+              autoCorrect={false}
+              onChangeText={setName}
+            />
+          </View>
 
-      <View style={styles.inputContainer}>
-        <Text style={styles.label}>Your Email</Text>
-        <TextInput 
-          style={styles.input}
-          placeholder="Enter your email"
-          value={email}
-          autoCorrect={false}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-        />
-      </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Your Email</Text>
+            <TextInput 
+              style={styles.input}
+              placeholder="Enter your email"
+              value={email}
+              autoCorrect={false}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+            />
+          </View>
 
-      {survey.questions.map((q, index) => (
-        <View key={index} style={styles.questionContainer}>
-          <Text style={styles.questionText}>{q}</Text>
-          <TextInput 
-            style={styles.answerInput}
-            placeholder="Enter your answer"
-            value={answers[q] || ""}
-            autoCorrect={false}
-            onChangeText={(text) => handleInputChange(q, text)}
-          />
+          {survey.questions.map((q, index) => (
+            <View key={index} style={styles.questionContainer}>
+              <Text style={styles.questionText}>{q}</Text>
+              <TextInput 
+                style={styles.answerInput}
+                placeholder="Enter your answer"
+                value={answers[q] || ""}
+                autoCorrect={false}
+                onChangeText={(text) => handleInputChange(q, text)}
+              />
+            </View>
+          ))}
+
+          <TouchableOpacity onPress={handleSubmit} style={styles.submitButton}>
+            <Text style={styles.submitButtonText}>Submit Survey</Text>
+          </TouchableOpacity>
         </View>
-      ))}
-
-      <TouchableOpacity 
-        onPress={handleSubmit} 
-        style={styles.submitButton}
-      >
-        <Text style={styles.submitButtonText}>Submit Survey</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      </KeyboardAwareScrollView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -110,8 +114,10 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     paddingTop: 60,
-    paddingBottom: 40,
     backgroundColor: "#fff",
+  },
+  innerContainer: {
+    flex: 1,
   },
   backButton: {
     alignSelf: "flex-start",

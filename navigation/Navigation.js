@@ -16,7 +16,14 @@ import FundraiserScreen from "../app/Fundraiser";
 import ContactsScreen from "../app/ContactScreen";
 import SurveyDetailsScreen from "../app/SurveyDetails";
 import MessagesInboxScreen from "../app/MessagesInboxScreen";
-import VerifyOTPScreen from "../app/VerifyOTPScreen";
+import OTPVerificationScreen from "../app/OTPVerificationScreen";
+import SendMessageScreen from "../app/SendMessageScreen";
+import SubmitSkillsScreen from "../app/SubmitSkillsScreen";
+import SplashScreen from "../app/SplashScreen";
+import FeatureScreen1 from "../app/FeatureScreen1";
+import FeatureScreen2 from "../app/FeatureScreen2";
+import FeatureScreen3 from "../app/FeatureScreen3";
+import Onboarding from "../app/Onboarding";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -87,14 +94,18 @@ export default function Navigation() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="SplashScreen" component={SplashScreen} />
+        {/* Add the Onboarding screen */}
+        <Stack.Screen name="Onboarding" component={Onboarding} />
         <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="VerifyOTP" component={VerifyOTPScreen} />
         <Stack.Screen name="Overview" component={MainTabs} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="SendMessageScreen" component={SendMessageScreen} />
+        <Stack.Screen name="SubmitSkillsScreen" component={SubmitSkillsScreen} />
         <Stack.Screen name="SurveyDetails" component={SurveyDetailsScreen} />
         <Stack.Screen name="MessagesInbox" component={MessagesInboxScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
-

@@ -1,43 +1,116 @@
 import React, { useEffect, useState } from "react";
 import { 
-  View, Text, FlatList, ActivityIndicator, Alert, TouchableOpacity, StyleSheet 
+  View, 
+  Text, 
+  FlatList, 
+  ActivityIndicator, 
+  Alert, 
+  TouchableOpacity, 
+  StyleSheet, 
+  RefreshControl, 
+  Linking 
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import axios from "axios";
 
-const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com"; // Production API URL
+const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com";
 
 export default function MessagesInboxScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const userPhoneNumber = route.params?.phone_number;
+
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    axios.get(`${API_BASE_URL}/messages`)
+  const fetchMessages = () => {
+    if (!userPhoneNumber) {
+      console.warn("User phone number is missing.");
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    axios.get(`${API_BASE_URL}/messages`, { params: { phone: userPhoneNumber } })
       .then((response) => setMessages(response.data))
       .catch((error) => {
         console.error("Error fetching messages:", error);
         Alert.alert("Error", "Failed to load messages.");
       })
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  const renderMessageItem = ({ item }) => (
-    <View style={styles.messageCard}>
-      <Text style={styles.messageText}>📨 {item.message}</Text>
-      <Text style={styles.sentDate}>
-        Sent: {new Date(item.created_at).toLocaleString()}
-      </Text>
-      {item.admin_response ? (
-        <View style={styles.adminResponseContainer}>
-          <Text style={styles.adminResponseTitle}>👨‍💼 Admin Response:</Text>
-          <Text style={styles.adminResponseText}>{item.admin_response}</Text>
+  useEffect(() => {
+    fetchMessages();
+  }, [userPhoneNumber]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchMessages();
+    setRefreshing(false);
+  };
+
+  const deleteMessage = async (id) => {
+    try {
+      await axios.delete(`${API_BASE_URL}/messages/${id}`);
+      setMessages(prevMessages => prevMessages.filter(message => message.id !== id));
+      Alert.alert("Success", "Message deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      Alert.alert("Error", "Failed to delete message.");
+    }
+  };
+
+  // Function to open URLs in the default browser
+  const handleLinkPress = (url) => {
+    Linking.openURL(url).catch(err => console.error("Failed to open URL:", err));
+  };
+
+  // Function to render each message
+  const renderMessageItem = ({ item }) => {
+    // Regular expression to match URLs in the text
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+    // Function to make URLs clickable
+    const renderTextWithLinks = (text) => {
+      const parts = text.split(urlRegex);
+      return parts.map((part, index) => {
+        if (urlRegex.test(part)) {
+          return (
+            <Text
+              key={index}
+              style={styles.linkText}
+              onPress={() => handleLinkPress(part)}  // Handle link click
+            >
+              {part}
+            </Text>
+          );
+        } else {
+          return <Text key={index}>{part}</Text>;
+        }
+      });
+    };
+
+    return (
+      <View style={styles.messageCard}>
+        <View style={styles.messageHeader}>
+          <Text style={styles.messageText}>{renderTextWithLinks(item.message)}</Text>
+          <TouchableOpacity onPress={() => deleteMessage(item.id)} style={styles.deleteButton}>
+            <Text style={styles.deleteButtonText}>Delete</Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        <Text style={styles.noResponseText}>No response yet.</Text>
-      )}
-    </View>
-  );
+        <Text style={styles.sentDate}>{new Date(item.created_at).toLocaleString()}</Text>
+        {item.admin_response ? (
+          <View style={styles.adminResponseContainer}>
+            <Text style={styles.adminResponseText}>{renderTextWithLinks(item.admin_response)}</Text>
+          </View>
+        ) : (
+          <Text style={styles.noResponseText}>No response yet.</Text>
+        )}
+      </View>
+    );
+  };
 
   if (loading) {
     return (
@@ -49,13 +122,11 @@ export default function MessagesInboxScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity 
-        onPress={() => navigation.goBack()} 
-        style={styles.backButton}
-      >
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
         <Text style={styles.backButtonText}>← Back</Text>
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>📥 Messages</Text>
+      <Text style={styles.headerTitle}>Messages</Text>
+
       {messages.length === 0 ? (
         <Text style={styles.noMessagesText}>No messages found.</Text>
       ) : (
@@ -65,6 +136,7 @@ export default function MessagesInboxScreen() {
           renderItem={renderMessageItem}
           contentContainerStyle={styles.flatListContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
     </View>
@@ -84,14 +156,26 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 18,
-    color: "blue",
+    color: "#007bff",
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 20,
     color: "#333",
+  },
+  deleteButton: {
+    backgroundColor: "#FF4040",
+    padding: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    marginLeft: 10,
+  },
+  deleteButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
   },
   noMessagesText: {
     textAlign: "center",
@@ -108,23 +192,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   messageCard: {
-    backgroundColor: "#f8f9fa",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
+    backgroundColor: "#f8f8f8",
     padding: 15,
     marginBottom: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
     shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  messageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
   },
   messageText: {
-    fontWeight: "bold",
-    color: "#333",
     fontSize: 16,
+    fontWeight: "500",
+    color: "#333",
     marginBottom: 5,
+    flex: 1,
   },
   sentDate: {
     color: "#777",
@@ -136,12 +226,6 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
   },
-  adminResponseTitle: {
-    color: "#065F46",
-    fontWeight: "bold",
-    marginBottom: 5,
-    fontSize: 14,
-  },
   adminResponseText: {
     fontSize: 14,
     color: "#065F46",
@@ -150,5 +234,9 @@ const styles = StyleSheet.create({
     color: "#FF0000",
     marginTop: 5,
     fontSize: 14,
+  },
+  linkText: {
+    color: "#007bff",
+    textDecorationLine: "underline",
   },
 });

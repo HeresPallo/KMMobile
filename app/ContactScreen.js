@@ -1,122 +1,191 @@
 import { useEffect, useState } from "react";
 import { 
   View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator, 
-  TextInput, KeyboardAvoidingView, Platform, Image, ScrollView, StyleSheet 
+  TextInput, KeyboardAvoidingView, Platform, Image, ScrollView, StyleSheet, ProgressBarAndroid 
 } from "react-native";
 import axios from "axios";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useNavigation } from "@react-navigation/native";
+import { useAuth } from "../utils/AuthContext";
+import * as DocumentPicker from "expo-document-picker"; 
 
-const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com"; // Production API URL
+const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com";
 
 export default function ContactsScreen() {
   const navigation = useNavigation();
+  const { user } = useAuth();
+  const [resume, setResume] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [surveys, setSurveys] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Message Section State
-  const [messageName, setMessageName] = useState("");
   const [message, setMessage] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
   const [sending, setSending] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Skills Section State
+  // Form State for Skills Submission
   const [skillsName, setSkillsName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [userSkills, setUserSkills] = useState("");
-  const [skills, setSkills] = useState([]); // To store refreshed skills list if needed
 
   useEffect(() => {
+    // Fetch surveys
     axios.get(`${API_BASE_URL}/surveys`)
-      .then((response) => {
-        setSurveys(response.data);
-      })
+      .then(response => setSurveys(response.data))
       .catch(() => Alert.alert("Error", "Failed to load surveys."));
     setLoading(false);
-  }, []);
 
-  // Submit message to admin
-  const handleSendMessage = async () => {
-    if (!phoneNumber || !message) {
-      Alert.alert("Error", "Please enter your phone number and message.");
+    // Debugging: Check if user is available
+    console.log("Logged-in User: ", user);
+  }, [user]);
+
+  const pickResume = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "application/pdf", 
+          "application/msword", 
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ],
+        multiple: false,
+      });
+  
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        console.log("❌ User canceled document picker.");
+        return;
+      }
+  
+      const file = result.assets[0];
+      let fileType = file.mimeType;
+      if (fileType === "application/x-pdf") {
+        fileType = "application/pdf";
+      }
+  
+      let fileUri = file.uri;
+      if (Platform.OS === "ios") {
+        fileUri = file.uri.replace("file://", "");
+      }
+  
+      setResume({
+        uri: fileUri,
+        name: file.name || "resume.pdf",
+        type: fileType || "application/pdf",
+        size: file.size
+      });
+  
+    } catch (err) {
+      console.error("❌ Error picking document:", err);
+      Alert.alert("Error", "Failed to pick document.");
+    }
+  };
+
+  // Submit Skills Function
+  const handleSubmitSkills = async () => {
+    if (!skillsName || !email || !address || !dateOfBirth || !userSkills || !resume) {
+      Alert.alert("Error", "Please fill out all fields and attach a resume.");
       return;
     }
+  
+    if (resume && resume.size > 5 * 1024 * 1024) {
+      Alert.alert("Error", "The file is too large. Please upload a file smaller than 5MB.");
+      return;
+    }
+  
+    if (resume && !["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(resume.type)) {
+      Alert.alert("Error", "Invalid file type. Please upload a PDF or DOCX file.");
+      return;
+    }
+  
+    const formData = new FormData();
+    formData.append("name", skillsName);
+    formData.append("email", email);
+    formData.append("address", address);
+    formData.append("date_of_birth", dateOfBirth);
+    formData.append("skills", userSkills);
+  
+    if (resume) {
+      const fileUri = resume.uri.startsWith("file://") ? resume.uri.replace("file://", "") : resume.uri;
+      const file = {
+        uri: fileUri,
+        name: resume.name,
+        type: resume.type
+      };
+      formData.append("resume", file);
+    }
+  
+    try {
+      setUploading(true);
+  
+      const url = user.skillsId ? `${API_BASE_URL}/skills-directory/${user.skillsId}` : `${API_BASE_URL}/skills-directory`;
+      const method = user.skillsId ? 'patch' : 'post';  
 
+      const response = await axios[method](url, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.lengthComputable) {
+            const progress = (progressEvent.loaded / progressEvent.total);
+            setUploadProgress(progress);
+          }
+        },
+      });
+  
+      console.log("✅ Success:", response.data);
+      Alert.alert("Success", "Skills submitted successfully!");
+    } catch (error) {
+      console.error("❌ Error uploading skills:", error.response?.data || error);
+      Alert.alert("Error", "Failed to submit skills.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Send Message Function (Retain the User's Phone Number)
+  const handleSendMessage = async () => {
+    if (!message) {
+      Alert.alert("Error", "Please enter your message.");
+      return;
+    }
+  
     setSending(true);
     try {
       await axios.post(`${API_BASE_URL}/messages`, { 
-        name: messageName, 
-        phone: phoneNumber, 
+        name: user.name, 
+        phone: user.phone_number, // Use user's existing phone number
         message 
       });
       Alert.alert("Success", "Message sent!");
       setMessage("");
-      setPhoneNumber("");
-      setMessageName("");
     } catch (error) {
       Alert.alert("Error", "Failed to send message.");
     }
     setSending(false);
   };
 
-  // Submit skills
-  const handleSubmitSkills = async () => {
-    if (!skillsName || !email || !address || !dateOfBirth || !userSkills) {
-      Alert.alert("Error", "Please fill out all fields.");
-      return;
-    }
-
-    try {
-      await axios.post(`${API_BASE_URL}/skills-directory`, {
-        name: skillsName,
-        email,
-        address,
-        date_of_birth: dateOfBirth,
-        skills: userSkills,
-      });
-
-      Alert.alert("Success", "Skills submitted successfully!");
-      setSkillsName("");
-      setEmail("");
-      setAddress("");
-      setDateOfBirth("");
-      setUserSkills("");
-
-      // Refresh skills list if needed
-      axios.get(`${API_BASE_URL}/skills-directory`).then((response) => setSkills(response.data));
-    } catch (error) {
-      Alert.alert("Error", "Failed to submit skills.");
+  const handleDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const formattedDate = selectedDate.toISOString().split("T")[0]; 
+      setDateOfBirth(formattedDate);
     }
   };
 
-  // Render a survey card
-  const renderSurveyCard = ({ item }) => (
-    <View style={styles.surveyCardContainer}>
-      <TouchableOpacity
-        style={styles.surveyCard}
-        onPress={() => navigation.navigate("SurveyDetails", { survey: item })}
-      >
-        <Image 
-          source={require("../assets/kmlogo.jpeg")} 
-          style={styles.surveyImage} 
-        />
-        <Text style={styles.surveyTitle}>
-          {item.title}
-        </Text>
-        <Text style={styles.surveyDescription}>
-          {item.description || "No description available"}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"} 
-      style={styles.container}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.sectionTitle}>Contact Us</Text>
+
+        {/* Buttons for each section */}
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("SubmitSkillsScreen")}>
+          <Text style={styles.buttonText}>Submit Skills</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("SendMessageScreen")}>
+          <Text style={styles.buttonText}>Send a Message</Text>
+        </TouchableOpacity>
+
         {/* Surveys Section */}
         <Text style={styles.sectionTitle}>Surveys</Text>
         {loading ? (
@@ -125,112 +194,23 @@ export default function ContactsScreen() {
           <FlatList
             horizontal
             data={surveys}
-            renderItem={renderSurveyCard}
+            renderItem={({ item }) => (
+              <View style={styles.surveyCardContainer}>
+                <TouchableOpacity
+                  style={styles.surveyCard}
+                  onPress={() => navigation.navigate("SurveyDetails", { survey: item })}
+                >
+                  <Image source={require("../assets/kmlogo.jpeg")} style={styles.surveyImage} />
+                  <Text style={styles.surveyTitle}>{item.title}</Text>
+                  <Text style={styles.surveyDescription}>{item.description || "No description available"}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             keyExtractor={(item) => item.id.toString()}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.flatListContent}
           />
         )}
-
-        <View style={styles.divider} />
-
-        {/* Messages Section */}
-        <Text style={styles.sectionTitle}>Send a Message</Text>
-        <TextInput 
-          placeholder="Enter your name" 
-          value={messageName} 
-          onChangeText={setMessageName} 
-          style={styles.input} 
-          autoCorrect={false} 
-          autoCapitalize="none" 
-        />
-        <TextInput 
-          placeholder="Enter your phone number" 
-          keyboardType="phone-pad" 
-          value={phoneNumber} 
-          onChangeText={setPhoneNumber} 
-          style={styles.input}  
-          autoCorrect={false} 
-          autoCapitalize="none"
-        />
-        <TextInput 
-          placeholder="Write your message..." 
-          multiline 
-          numberOfLines={5} 
-          textAlignVertical="top" 
-          value={message} 
-          onChangeText={setMessage} 
-          style={styles.textarea}  
-          autoCorrect={false} 
-          autoCapitalize="none"
-        />
-        <TouchableOpacity onPress={handleSendMessage} style={styles.button}>
-          <Text style={styles.buttonText}>{sending ? "Sending..." : "Send Message"}</Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider} />
-
-        {/* Skills Directory Form */}
-        <Text style={styles.sectionTitle}>Submit Your Skills</Text>
-        <TextInput 
-          placeholder="Full Name" 
-          value={skillsName} 
-          onChangeText={setSkillsName} 
-          style={styles.input} 
-          autoCorrect={false} 
-          autoCapitalize="none"
-        />
-        <TextInput 
-          placeholder="Email Address" 
-          value={email} 
-          onChangeText={setEmail} 
-          keyboardType="email-address" 
-          style={styles.input} 
-          autoCorrect={false} 
-          autoCapitalize="none"
-        />
-        <TextInput 
-          placeholder="Address" 
-          value={address} 
-          onChangeText={setAddress} 
-          style={styles.input} 
-          autoCorrect={false} 
-          autoCapitalize="none" 
-        />
-        <TextInput 
-          placeholder="Date of Birth (YYYY-MM-DD)" 
-          value={dateOfBirth} 
-          onChangeText={setDateOfBirth} 
-          keyboardType="numeric" 
-          style={styles.input} 
-          autoCorrect={false} 
-          autoCapitalize="none"
-        />
-        <TextInput 
-          placeholder="Enter your skills (e.g., Web Development, Marketing, Finance)" 
-          multiline 
-          numberOfLines={3} 
-          textAlignVertical="top" 
-          value={userSkills} 
-          onChangeText={setUserSkills} 
-          style={styles.textarea} 
-          autoCorrect={false} 
-          autoCapitalize="none" 
-        />
-        <TouchableOpacity onPress={handleSubmitSkills} style={styles.button}>
-          <Text style={styles.buttonText}>Submit Skills</Text>
-        </TouchableOpacity>
-
-        <View style={styles.divider} />
-
-        {/* Messages Inbox Button */}
-        <TouchableOpacity
-          onPress={() => navigation.navigate("MessagesInbox")}
-          style={styles.inboxButton}
-        >
-          <Text style={styles.inboxButtonText}>📥 View Messages Inbox</Text>
-        </TouchableOpacity>
-       
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -239,11 +219,11 @@ export default function ContactsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#fff",
+    paddingHorizontal: 20,
+    paddingTop: 60,
   },
   scrollContent: {
-    padding: 20,
-    paddingTop: 60,
     paddingBottom: 60,
   },
   sectionTitle: {
@@ -254,42 +234,19 @@ const styles = StyleSheet.create({
     color: "#333",
     textAlign: "center",
   },
-  divider: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
-    marginVertical: 20,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 12,
+  button: {
+    backgroundColor: "red",
+    paddingVertical: 15,
     borderRadius: 10,
-    marginBottom: 10,
-  },
-  textarea: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 12,
-    borderRadius: 10,
-    minHeight: 100,
-    marginBottom: 10,
-  },
-  flatListContent: {
-    paddingVertical: 10,
-  },
-  inboxButton: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: "#007bff",
-    borderRadius: 8,
+    marginVertical: 10,
+    justifyContent: "center",
     alignItems: "center",
   },
-  inboxButtonText: {
+  buttonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
   },
-  // New styles for survey card
   surveyCardContainer: {
     justifyContent: "center",
   },
@@ -325,23 +282,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 14,
   },
-  // Styled buttons
-  button: {
-    backgroundColor: "red",
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: "center",
-    marginTop: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
 });
+

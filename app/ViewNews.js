@@ -1,56 +1,59 @@
 import { useEffect, useState } from "react";
-import { View, Text, Image, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Alert } from "react-native";
+import { 
+  View, Text, Image, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Alert, Share, Linking 
+} from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "../utils/AuthContext"; // Import the auth context
+import HTML from 'react-native-render-html';
+import { useWindowDimensions } from 'react-native';
 
-// Update these URLs to match your Heroku deployment
-const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com/uploads/";
-const HEROKU_API = "https://new-hope-e46616a5d911.herokuapp.com";
+const API_BASE_URL = "https://new-hope-e46616a5d911.herokuapp.com";
+const FRONTEND_BASE_URL = "https://new-hope.com/news"; 
 
 export default function ViewNewsScreen() {
   const route = useRoute();
   const navigation = useNavigation();
+  const { user } = useAuth();
   const { id } = route.params;
   const [news, setNews] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [author, setAuthor] = useState("");
-  const [userId, setUserId] = useState(null);
+  const [storedUserId, setStoredUserId] = useState(null);
+  const { width } = useWindowDimensions(); // for handling responsive design
 
-  // Retrieve logged in user's id from AsyncStorage
   useEffect(() => {
     const fetchUserId = async () => {
-      const storedUserId = await AsyncStorage.getItem("user_id");
-      setUserId(storedUserId);
+      const uid = await AsyncStorage.getItem("user_id");
+      setStoredUserId(uid);
     };
     fetchUserId();
   }, []);
 
-  // Fetch the news item and then the author's name
+  const loggedInUserId = user?.id ? user.id.toString() : storedUserId;
+
   useEffect(() => {
     const fetchNews = async () => {
       setLoading(true);
       try {
-        const response = await axios.get(`${HEROKU_API}/news/${id}`);
-        console.log("Fetched news:", response.data);
+        const response = await axios.get(`${API_BASE_URL}/news/${id}`);
         setNews(response.data);
-        if (response.data.user_id) {
-          if (response.data.user_id === 999) {
-            setAuthor("Admin");
-          } else {
-            try {
-              // Fetch mobile user info from the new endpoint
-              const mobileUserResponse = await axios.get(`${HEROKU_API}/mobileusers/${response.data.user_id}`);
-              setAuthor(mobileUserResponse.data.name);
-            } catch (userError) {
-              console.error("Error fetching mobile user info:", userError);
-              setAuthor("User");
-            }
+
+        // Determine author
+        if (response.data.status === "admin") {
+          setAuthor("Admin");
+        } else if (response.data.user_id) {
+          try {
+            const mobileUserResponse = await axios.get(`${API_BASE_URL}/mobileusers/${response.data.user_id}`);
+            setAuthor(mobileUserResponse.data.name);
+          } catch (userError) {
+            console.error("Error fetching mobile user info:", userError);
+            setAuthor("User");
           }
         } else {
-          console.error("No user_id found in news data");
           setAuthor("Unknown Author");
         }
       } catch (error) {
@@ -63,22 +66,30 @@ export default function ViewNewsScreen() {
     fetchNews();
   }, [id]);
 
-  const handleDelete = async (id, navigation) => {
+  const handleShare = async () => {
     try {
-      // Retrieve the JWT token from AsyncStorage
+      const shareOptions = {
+        message: `📢 *${news.title}* \n\n${news.content.slice(0, 100)}...\n\n🔗 Read more: ${FRONTEND_BASE_URL}/${news.id}`,
+      };
+      await Share.share(shareOptions);
+    } catch (error) {
+      console.error("❌ Error sharing news:", error);
+      Alert.alert("Error", "Failed to share news.");
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         Alert.alert("Error", "No token found. Please log in again.");
         return;
       }
-  
-      // Send DELETE request to the backend endpoint
-      await axios.delete(`${HEROKU_API}/user/news/${id}`, {
+      await axios.delete(`${API_BASE_URL}/user/news/${id}`, {
         headers: {
           "Authorization": `Bearer ${token}`,
         },
       });
-  
       Alert.alert("Success", "News story deleted successfully!");
       navigation.goBack();
     } catch (error) {
@@ -86,7 +97,12 @@ export default function ViewNewsScreen() {
       Alert.alert("Error", error.response?.data?.error || "Failed to delete news story.");
     }
   };
-  
+
+  const handleLinkPress = () => {
+    // Navigate to the SubmitSkillsScreen when the link is clicked
+    navigation.navigate("SubmitSkillsScreen"); // Navigate directly to the SubmitSkillsScreen
+  };
+
   if (loading || !news) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -105,14 +121,11 @@ export default function ViewNewsScreen() {
       </TouchableOpacity>
       
       <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 20 }}>
-        {news && news.thumbnail ? (
+        {news.thumbnail ? (
           <TouchableOpacity onPress={() => setModalVisible(true)}>
             <Image 
               source={{ uri: news.thumbnail.startsWith("http") ? news.thumbnail : `${API_BASE_URL}${news.thumbnail}` }}
               style={{ width: 300, height: 200, borderRadius: 10, marginBottom: 20 }} 
-              onError={(e) => {
-                console.error("❌ Image Load Error:", e.nativeEvent.error);
-              }}
             />
           </TouchableOpacity>
         ) : (
@@ -127,57 +140,72 @@ export default function ViewNewsScreen() {
         <Text style={{ fontSize: 16, color: "gray", marginBottom: 20, textAlign: "center" }}>
           {news.category}
         </Text>
-        <Text style={{ fontSize: 18, textAlign: "center", lineHeight: 24, paddingHorizontal: 10 }}>
-          {news.content}
-        </Text>
+
+        {/* Render the HTML content properly with paragraph formatting */}
+        <HTML 
+          source={{ html: news.content }} 
+          tagsStyles={{ 
+            p: { 
+              fontSize: 18, // Bigger text
+              lineHeight: 28, // Proper line spacing
+              marginBottom: 15, // Space between paragraphs
+              textAlign: 'center', // Center-aligned text
+            },
+            a: { 
+              color: 'blue', 
+              textDecorationLine: 'underline' 
+            }
+          }}
+          renderersProps={{
+            a: {
+              onPress: () => handleLinkPress(),
+            }
+          }}
+          contentWidth={width} // Pass contentWidth for responsive scaling
+        />
+
+        {/* Conditionally render the link if showSkillsLink is true */}
+        {news?.showSkillsLink && (
+          <TouchableOpacity onPress={handleLinkPress}>
+            <Text style={{ fontSize: 18, color: "blue", textDecorationLine: "underline", textAlign: "center" }}>
+              Click here to submit your skills
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
       
-      {news && userId && userId === news.user_id.toString() && (
-        <View style={{ flexDirection: "row", justifyContent: "space-around", padding: 10 }}>
-          <TouchableOpacity 
-            onPress={() => navigation.navigate("EditNews", { edit: true, id: news.id })}
-            style={{ backgroundColor: "#007bff", padding: 10, borderRadius: 5 }}
-          >
-            <Text style={{ color: "white" }}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => handleDelete(news.id, navigation)}
-            style={{ backgroundColor: "#dc3545", padding: 10, borderRadius: 5 }}
-          >
-            <Text style={{ color: "white" }}>Delete</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      
-      <Modal 
-        visible={modalVisible} 
-        transparent={true} 
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
+      {/* Action Buttons */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", padding: 10 }}>
+        {loggedInUserId === news.user_id.toString() && (
+          <>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate("EditNews", { edit: true, id: news.id })}
+              style={{ backgroundColor: "#007bff", padding: 10, borderRadius: 5, flex: 1, marginRight: 5 }}
+            >
+              <Text style={{ color: "white", textAlign: "center" }}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => handleDelete(news.id)}
+              style={{ backgroundColor: "#dc3545", padding: 10, borderRadius: 5, flex: 1, marginLeft: 5 }}
+            >
+              <Text style={{ color: "white", textAlign: "center" }}>Delete</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Share News Button */}
+      <TouchableOpacity 
+        onPress={handleShare}
+        style={{ backgroundColor: "#25D366", padding: 12, borderRadius: 8, marginTop: 10, alignItems: "center" }}
       >
-        <TouchableOpacity 
-          style={{
-            flex: 1, 
-            backgroundColor: "rgba(0,0,0,0.9)", 
-            justifyContent: "center", 
-            alignItems: "center"
-          }} 
-          onPress={() => setModalVisible(false)}
-        >
-          {news && news.thumbnail ? (
-            <Image 
-              source={{ uri: news.thumbnail.startsWith("http") ? news.thumbnail : `${API_BASE_URL}${news.thumbnail}` }}
-              style={{ width: "90%", height: 400, borderRadius: 10, resizeMode: "contain" }} 
-              onError={(e) => {
-                console.error("❌ Image Load Error:", e.nativeEvent.error);
-              }}
-            />
-          ) : (
-            <Text style={{ fontSize: 16, color: "white", marginTop: 20 }}>No Image Available</Text>
-          )}
-          <Text style={{ color: "white", fontSize: 18, marginTop: 20, textAlign: "center" }}>
-            Tap anywhere to close
-          </Text>
+        <Text style={{ color: "white", fontWeight: "bold" }}>📢 Share News</Text>
+      </TouchableOpacity>
+
+      {/* Image Modal */}
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center", alignItems: "center" }} onPress={() => setModalVisible(false)}>
+          <Image source={{ uri: news.thumbnail }} style={{ width: "90%", height: 400, borderRadius: 10, resizeMode: "contain" }} />
         </TouchableOpacity>
       </Modal>
     </View>

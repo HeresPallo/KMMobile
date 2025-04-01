@@ -1,9 +1,8 @@
-
+import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator } from "react-native";
-import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Navigation from "./navigation/Navigation";
-
+import { AuthProvider } from "./utils/AuthContext";
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -26,5 +25,9 @@ export default function App() {
     );
   }
 
-  return <Navigation isAuthenticated={isAuthenticated} />;
+  return (
+    <AuthProvider>
+      <Navigation isAuthenticated={isAuthenticated} />
+    </AuthProvider>
+  );
 }

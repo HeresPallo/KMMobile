@@ -41,7 +41,7 @@ export default function FundraiserScreen() {
     return (
       <TouchableOpacity 
         style={styles.campaignCard}
-        onPress={() => Linking.openURL(`https://kaifalamarah.com/campaign/details/${item.id}/donate-for-a-better-sierra-leone-2028`)}
+        onPress={() => Linking.openURL(`https://kaifalamarah.com/donation`)}
       >
         {item.thumbnail ? (
           <Image 
